@@ -1,0 +1,493 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.example.com/schemas/api-usage-event/v1",
+  "title": "API Usage Event",
+  "description": "Production-grade schema for API usage events emitted by a SaaS API gateway",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_version",
+    "event_timestamp",
+    "ingestion_timestamp",
+    "tenant_id",
+    "request"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Globally unique identifier for this event. Used for idempotency - consumers can deduplicate based on this ID. Format: UUIDv7 recommended for time-sortability."
+    },
+    "event_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the event schema (e.g., '1.0.0'). Enables schema evolution and backward compatibility handling.",
+      "examples": ["1.0.0", "1.1.0"]
+    },
+    "event_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the API request was received at the gateway. This is the authoritative time for the event. Used for late-arriving event handling - compare with ingestion_timestamp to detect delays."
+    },
+    "ingestion_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the event was ingested into the event pipeline. Difference from event_timestamp indicates event latency. Events where (ingestion_timestamp - event_timestamp) > threshold are flagged as late-arriving."
+    },
+    "processing_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the event was processed by downstream consumers. Optional, added by consumers."
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonically increasing sequence number per tenant/API key. Enables ordering and gap detection for late-arriving events."
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Unique identifier for the tenant/organization. Used for multi-tenant isolation and billing aggregation."
+    },
+    "subscription": {
+      "type": "object",
+      "description": "Subscription and billing context for the API call.",
+      "properties": {
+        "subscription_id": {
+          "type": "string",
+          "description": "Unique identifier for the subscription plan."
+        },
+        "plan_tier": {
+          "type": "string",
+          "enum": ["free", "starter", "professional", "enterprise", "custom"],
+          "description": "Current subscription tier - used for rate limit enforcement and billing."
+        },
+        "billing_cycle_id": {
+          "type": "string",
+          "description": "Identifier for the current billing cycle. Enables accurate usage aggregation per billing period."
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "description": "Authentication and identity information for the API caller.",
+      "required": ["api_key_id", "auth_method"],
+      "properties": {
+        "api_key_id": {
+          "type": "string",
+          "description": "Hashed/masked identifier of the API key used. Never store raw keys. Used for per-key rate limiting and abuse detection."
+        },
+        "api_key_prefix": {
+          "type": "string",
+          "maxLength": 8,
+          "description": "First 8 characters of the API key for identification without exposing the full key."
+        },
+        "user_id": {
+          "type": "string",
+          "description": "Authenticated user ID if using user-level authentication."
+        },
+        "auth_method": {
+          "type": "string",
+          "enum": ["api_key", "oauth2", "jwt", "mtls", "anonymous"],
+          "description": "Authentication method used for this request."
+        },
+        "oauth_client_id": {
+          "type": "string",
+          "description": "OAuth client ID if auth_method is oauth2."
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Authorized scopes/permissions for this request."
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "description": "Details of the API request.",
+      "required": ["request_id", "method", "path", "received_at"],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique identifier for this specific request. Used for distributed tracing and log correlation."
+        },
+        "trace_id": {
+          "type": "string",
+          "description": "Distributed tracing ID (W3C Trace Context format). Enables end-to-end request tracing."
+        },
+        "span_id": {
+          "type": "string",
+          "description": "Span ID within the distributed trace."
+        },
+        "method": {
+          "type": "string",
+          "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+          "description": "HTTP method of the request."
+        },
+        "path": {
+          "type": "string",
+          "description": "Normalized API path (e.g., '/v1/users/{id}'). Parameterized to enable aggregation."
+        },
+        "path_raw": {
+          "type": "string",
+          "description": "Raw request path before normalization (e.g., '/v1/users/12345')."
+        },
+        "query_params_hash": {
+          "type": "string",
+          "description": "SHA-256 hash of query parameters. Enables grouping without exposing sensitive data."
+        },
+        "api_version": {
+          "type": "string",
+          "description": "API version targeted by the request (e.g., 'v1', '2024-01-15')."
+        },
+        "endpoint_id": {
+          "type": "string",
+          "description": "Unique identifier for the API endpoint. Enables per-endpoint analytics and rate limiting."
+        },
+        "received_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Precise timestamp when request was received at the gateway edge."
+        },
+        "content_length": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Request body size in bytes. Used for bandwidth billing and abuse detection."
+        },
+        "content_type": {
+          "type": "string",
+          "description": "Content-Type header value."
+        }
+      }
+    },
+    "response": {
+      "type": "object",
+      "description": "Details of the API response.",
+      "properties": {
+        "status_code": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599,
+          "description": "HTTP response status code."
+        },
+        "status_category": {
+          "type": "string",
+          "enum": ["success", "client_error", "server_error", "rate_limited", "unauthorized"],
+          "description": "Categorized status for easier aggregation and alerting."
+        },
+        "content_length": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Response body size in bytes. Used for bandwidth billing."
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total request latency in milliseconds (gateway received to response sent)."
+        },
+        "upstream_latency_ms": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Latency of the upstream/backend service in milliseconds."
+        },
+        "cache_status": {
+          "type": "string",
+          "enum": ["hit", "miss", "bypass", "stale", "revalidated"],
+          "description": "Cache hit/miss status if caching is enabled."
+        },
+        "error_code": {
+          "type": "string",
+          "description": "Application-specific error code for failed requests."
+        },
+        "error_message": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Sanitized error message (no sensitive data)."
+        }
+      }
+    },
+    "client": {
+      "type": "object",
+      "description": "Client information for abuse detection and analytics.",
+      "properties": {
+        "ip_address": {
+          "type": "string",
+          "description": "Client IP address. May be anonymized based on privacy requirements."
+        },
+        "ip_address_hash": {
+          "type": "string",
+          "description": "SHA-256 hash of IP address for privacy-preserving abuse detection."
+        },
+        "ip_version": {
+          "type": "string",
+          "enum": ["ipv4", "ipv6"],
+          "description": "IP address version."
+        },
+        "user_agent": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "User-Agent header. Truncated to prevent abuse via oversized headers."
+        },
+        "user_agent_parsed": {
+          "type": "object",
+          "description": "Parsed User-Agent components.",
+          "properties": {
+            "browser": { "type": "string" },
+            "browser_version": { "type": "string" },
+            "os": { "type": "string" },
+            "os_version": { "type": "string" },
+            "device_type": {
+              "type": "string",
+              "enum": ["desktop", "mobile", "tablet", "bot", "unknown"]
+            },
+            "is_bot": { "type": "boolean" }
+          }
+        },
+        "sdk_name": {
+          "type": "string",
+          "description": "Name of the SDK if request came from an official SDK."
+        },
+        "sdk_version": {
+          "type": "string",
+          "description": "Version of the SDK used."
+        }
+      }
+    },
+    "geo": {
+      "type": "object",
+      "description": "Geolocation data derived from client IP. Used for abuse detection and regional analytics.",
+      "properties": {
+        "country_code": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code."
+        },
+        "country_name": {
+          "type": "string",
+          "description": "Country name."
+        },
+        "region": {
+          "type": "string",
+          "description": "Region/state/province."
+        },
+        "city": {
+          "type": "string",
+          "description": "City name."
+        },
+        "postal_code": {
+          "type": "string",
+          "description": "Postal/ZIP code."
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Approximate latitude (precision limited for privacy)."
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Approximate longitude (precision limited for privacy)."
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone identifier."
+        },
+        "asn": {
+          "type": "integer",
+          "description": "Autonomous System Number. Useful for identifying hosting providers/VPNs."
+        },
+        "as_org": {
+          "type": "string",
+          "description": "AS organization name."
+        },
+        "is_datacenter": {
+          "type": "boolean",
+          "description": "Whether the IP belongs to a known datacenter. Flag for abuse detection."
+        },
+        "is_vpn": {
+          "type": "boolean",
+          "description": "Whether the IP is a known VPN endpoint. Flag for abuse detection."
+        },
+        "is_tor": {
+          "type": "boolean",
+          "description": "Whether the IP is a known Tor exit node. Flag for abuse detection."
+        },
+        "is_proxy": {
+          "type": "boolean",
+          "description": "Whether the IP is a known proxy. Flag for abuse detection."
+        }
+      }
+    },
+    "rate_limiting": {
+      "type": "object",
+      "description": "Rate limiting state at time of request. Critical for abuse detection.",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "description": "Rate limit ceiling for this tenant/key/endpoint."
+        },
+        "remaining": {
+          "type": "integer",
+          "description": "Remaining requests in current window."
+        },
+        "reset_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the rate limit window resets."
+        },
+        "window_size_seconds": {
+          "type": "integer",
+          "description": "Size of the rate limit window in seconds."
+        },
+        "was_rate_limited": {
+          "type": "boolean",
+          "description": "Whether this request was rejected due to rate limiting."
+        },
+        "rate_limit_policy": {
+          "type": "string",
+          "description": "Name of the rate limit policy applied."
+        },
+        "quota_used_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of rate limit quota consumed. High values indicate potential abuse."
+        }
+      }
+    },
+    "abuse_signals": {
+      "type": "object",
+      "description": "Signals and scores for abuse detection systems.",
+      "properties": {
+        "risk_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Computed risk score (0-100). Higher values indicate higher abuse likelihood."
+        },
+        "risk_factors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of risk factors detected (e.g., 'unusual_geo', 'high_velocity', 'known_bad_ip')."
+        },
+        "velocity_1min": {
+          "type": "integer",
+          "description": "Request count from this identity in the last 1 minute."
+        },
+        "velocity_5min": {
+          "type": "integer",
+          "description": "Request count from this identity in the last 5 minutes."
+        },
+        "velocity_1hour": {
+          "type": "integer",
+          "description": "Request count from this identity in the last hour."
+        },
+        "unique_ips_24h": {
+          "type": "integer",
+          "description": "Unique IP addresses used by this API key in last 24 hours. High values may indicate key sharing."
+        },
+        "unique_endpoints_1h": {
+          "type": "integer",
+          "description": "Unique endpoints accessed in last hour. Unusual patterns may indicate enumeration attacks."
+        },
+        "is_suspicious": {
+          "type": "boolean",
+          "description": "Whether this request has been flagged as suspicious by abuse detection."
+        },
+        "action_taken": {
+          "type": "string",
+          "enum": ["allowed", "challenged", "blocked", "throttled", "logged"],
+          "description": "Action taken by the abuse detection system."
+        },
+        "fingerprint_hash": {
+          "type": "string",
+          "description": "Hash of client fingerprint (TLS, headers, etc.) for device tracking."
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "description": "Gateway infrastructure metadata.",
+      "properties": {
+        "gateway_id": {
+          "type": "string",
+          "description": "Identifier of the gateway instance that processed the request."
+        },
+        "gateway_region": {
+          "type": "string",
+          "description": "Geographic region of the gateway (e.g., 'us-east-1', 'eu-west-1')."
+        },
+        "gateway_version": {
+          "type": "string",
+          "description": "Version of the gateway software."
+        },
+        "upstream_service": {
+          "type": "string",
+          "description": "Name of the upstream/backend service that handled the request."
+        },
+        "upstream_instance": {
+          "type": "string",
+          "description": "Instance ID of the upstream service."
+        }
+      }
+    },
+    "billing": {
+      "type": "object",
+      "description": "Billing and metering information.",
+      "properties": {
+        "billable": {
+          "type": "boolean",
+          "description": "Whether this request is billable (some requests like health checks may not be)."
+        },
+        "billing_units": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Number of billing units consumed by this request (may vary by endpoint complexity)."
+        },
+        "pricing_tier": {
+          "type": "string",
+          "description": "Pricing tier applied to this request."
+        },
+        "cost_estimate_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Estimated cost of this request in USD."
+        }
+      }
+    },
+    "custom_attributes": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Extensible key-value pairs for custom metadata. Schema-less to support varied use cases."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Event metadata for pipeline management.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "System that produced this event (e.g., 'api-gateway-prod')."
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["production", "staging", "development", "test"],
+          "description": "Environment from which this event originated."
+        },
+        "partition_key": {
+          "type": "string",
+          "description": "Key used for event partitioning. Ensures related events go to same partition for ordering."
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How long to retain this event in days."
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
