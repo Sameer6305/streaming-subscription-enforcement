@@ -1,0 +1,14 @@
+# Spark Structured Streaming Bronze Ingestion Requirements
+
+# Core Spark
+pyspark==3.5.0
+
+# Delta Lake
+delta-spark==3.1.0
+
+# Type checking support
+py4j==0.10.9.7
+
+# Optional: For local development/testing
+# kafka-python==2.0.2
+# pandas==2.1.4
