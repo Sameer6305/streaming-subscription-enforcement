@@ -2,10 +2,52 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![Spark 3.5.0](https://img.shields.io/badge/spark-3.5.0-orange.svg)](https://spark.apache.org/)
-[![Delta Lake 3.1.0](https://img.shields.io/badge/delta--lake-3.1.0-green.svg)](https://delta.io/)
+[![Spark 3.5.0](https://img.shields.io/badge/Apache%20Spark-3.5.0-E25A1C.svg)](https://spark.apache.org/)
+[![Delta Lake 3.1.0](https://img.shields.io/badge/Delta%20Lake-3.1.0-00ADD8.svg)](https://delta.io/)
+[![Apache Kafka](https://img.shields.io/badge/Apache%20Kafka-3.x-231F20.svg)](https://kafka.apache.org/)
+[![Redis](https://img.shields.io/badge/Redis-7.x-DC382D.svg)](https://redis.io/)
+[![Structured Streaming](https://img.shields.io/badge/Structured%20Streaming-Exactly--Once-blueviolet.svg)]()
 
-A production-grade, event-driven streaming platform for real-time API usage tracking, rate limiting, and subscription enforcement in multi-tenant SaaS environments.
+> **Production-grade, event-driven streaming platform** for real-time API usage tracking, rate limiting, and subscription enforcement in multi-tenant SaaS environments — handling **100M+ events/day** with sub-5-second enforcement latency.
+
+---
+
+## Technologies & Skills Demonstrated
+
+| Category | Technologies | Details |
+|----------|-------------|---------|
+| **Stream Processing** | Apache Spark Structured Streaming | Micro-batch streaming with exactly-once semantics, watermarks, stateful aggregations, foreachBatch sinks |
+| **Event Streaming** | Apache Kafka | 64-partition topic design, tenant-partitioned for locality, 7-day retention as replay buffer, Snappy compression |
+| **Data Lake** | Delta Lake (ACID Transactions) | Medallion architecture (Bronze/Silver/Gold), time travel, schema evolution, MERGE upserts, Z-ordering |
+| **Caching & Enforcement** | Redis | In-memory rate-limit counters, TTL-based window expiry, sub-millisecond enforcement lookups |
+| **Data Architecture** | Medallion Architecture (Lakehouse) | Bronze (raw/immutable) → Silver (deduplicated/validated) → Gold (aggregated/enforced) |
+| **Data Quality** | Custom DQ Framework | Schema validation, value range checks, enum enforcement, Z-score volume anomaly detection, quarantine tables |
+| **Observability** | Prometheus + Grafana + Custom Metrics | Processing lag, throughput, data freshness, error rates, Kafka consumer lag, multi-tier alerting |
+| **Event Schema Design** | JSON Schema (2020-12) | 19 field groups, 80+ fields, UUIDv7 idempotency keys, W3C distributed tracing |
+| **Deduplication** | Watermark + dropDuplicates + MERGE | Streaming dedup with bounded state, batch dedup with Delta MERGE, window-based fallback |
+| **Fault Tolerance** | Checkpointing, DLQ, Idempotent Writes | Zero data loss across failures, Dead Letter Queue for malformed records, automatic recovery |
+| **Rate Limiting** | Tumbling Window Aggregation | Per-tenant 1-minute windows, plan-based limits (Free→Enterprise), real-time over-limit alerts |
+| **Abuse Detection** | Velocity Tracking + Risk Scoring | Per-key velocity windows (1min/5min/1hr), risk factor analysis, IP fingerprinting |
+| **Billing Metering** | Weighted Usage Units | Per-endpoint cost weighting, monthly billing cycle aggregation, overage calculation |
+| **Language** | Python 3.9+ | Type hints throughout, PEP 8 style, dataclasses, context managers, argparse CLI |
+| **Infrastructure** | AWS S3 / HDFS, Kubernetes / YARN | Cloud-native storage, cluster orchestration, horizontal scaling |
+| **Alerting** | PagerDuty / OpsGenie / Slack | Critical/warning severity tiers, configurable thresholds per pipeline layer |
+| **CI/CD** | GitHub Actions | Automated testing, linting, deployment |
+
+### Engineering Patterns Used
+
+- **Medallion / Lakehouse Architecture** — Industry-standard 3-layer data lake pattern (Bronze → Silver → Gold)
+- **Event Sourcing** — Immutable Bronze layer preserves every event as-received for audit & replay
+- **Exactly-Once Semantics** — Kafka checkpoints + Delta ACID + idempotent MERGE = no duplicates, no data loss
+- **Dead Letter Queue (DLQ)** — Malformed records isolated to DLQ, never block the pipeline
+- **Quarantine Pattern** — Invalid records preserved for investigation, not silently dropped
+- **Watermark-Based Late Event Handling** — 1-hour watermark with flag-don't-drop policy
+- **CQRS (Command Query Responsibility Segregation)** — Separate write path (streaming) from read path (Redis enforcement)
+- **Circuit Breaker / Fail-Open** — Redis failure = allow all traffic (availability > strict enforcement)
+- **Backpressure Control** — Configurable `maxOffsetsPerTrigger` prevents OOM under load spikes
+- **Z-Score Anomaly Detection** — Statistical volume monitoring (>3σ triggers alerts)
+- **Schema-on-Read** — Bronze accepts any JSON; Silver enforces strict schema
+- **Data Lineage** — Silver records link back to Bronze Kafka partition/offset for full traceability
 
 ## 📋 Table of Contents
 
@@ -30,11 +72,12 @@ A production-grade, event-driven streaming platform for real-time API usage trac
 
 This platform processes **100M+ API requests daily** across 10,000+ tenants, providing:
 
-- ⚡ **Real-time rate limiting** with <5-second enforcement latency
-- 💰 **Usage-based billing** with accurate metering
-- 🛡️ **Abuse detection** using velocity and risk scoring
-- 📊 **Multi-tenant analytics** with plan-based enforcement
-- 🔄 **Zero data loss** with comprehensive failure recovery
+- **Real-time rate limiting** with <5-second enforcement latency
+- **Usage-based billing** with accurate metering and overage detection
+- **Abuse detection** using velocity analysis and risk scoring
+- **Multi-tenant analytics** with plan-based enforcement (Free → Enterprise)
+- **Zero data loss** with comprehensive failure recovery and DLQ
+- **Real data ready** — includes a sample data generator producing realistic multi-tenant SaaS traffic patterns
 
 ### Business Problem
 
@@ -52,6 +95,8 @@ This platform processes **100M+ API requests daily** across 10,000+ tenants, pro
 | **Tenants Supported** | 10,000+ |
 | **Data Retention** | 2 years (compliance) |
 | **Availability** | 99.9% SLA |
+| **Deduplication** | Exactly-once via watermark + MERGE |
+| **Data Quality** | >99% pass rate with auto-quarantine |
 
 ---
 
@@ -155,35 +200,44 @@ This platform processes **100M+ API requests daily** across 10,000+ tenants, pro
 - **Real-Time Rate Limiting**
   - Sub-second enforcement with Redis cache
   - Plan-based limits: Free (60/min), Starter (300/min), Pro (1000/min), Enterprise (5000/min)
-  - Sliding window counters with 1-minute granularity
+  - Tumbling window counters with 1-minute granularity
 
 - **Usage Tracking & Billing**
   - Accurate event counting with deduplication
   - Hourly and monthly aggregations
   - Cost attribution per tenant/API endpoint
+  - Weighted billing units per endpoint complexity
 
 - **Abuse Detection**
   - Velocity spike detection (1-min/5-min windows)
   - Risk scoring based on request patterns
   - Anomalous behavior flagging
+  - IP fingerprinting and credential sharing detection
 
 - **Data Quality**
   - Schema validation (required fields, types, constraints)
   - Value validation (ranges, enums, formats)
-  - Volume anomaly detection (Z-score based)
-  - Automatic quarantine for failed records
+  - Volume anomaly detection (Z-score based, >3σ)
+  - Automatic quarantine for failed records (never silently dropped)
 
 - **Observability**
   - Real-time metrics (throughput, lag, freshness)
-  - Multi-tier alerting (warning, critical)
-  - Grafana dashboards
-  - Custom KPIs per layer
+  - Multi-tier alerting (warning, critical) with configurable thresholds
+  - Grafana dashboards for pipeline health, quality, enforcement
+  - Custom KPIs per layer with Prometheus export
 
 - **Failure Recovery**
   - Checkpoint-based recovery (zero data loss)
-  - Delta Lake ACID transactions
-  - Idempotent processing
-  - Historical data reprocessing
+  - Delta Lake ACID transactions (no partial writes)
+  - Idempotent processing with MERGE upserts
+  - Dead Letter Queue for malformed records
+  - Historical data reprocessing support
+
+- **Sample Data Generation**
+  - Realistic multi-tenant SaaS traffic simulation
+  - Configurable duplicate, late, and abuse rates
+  - Supports JSON, JSONL, Parquet, and direct Kafka output
+  - 50 tenants with diurnal traffic patterns
 
 ---
 
@@ -216,10 +270,16 @@ This platform processes **100M+ API requests daily** across 10,000+ tenants, pro
 pyspark==3.5.0              # Spark processing engine
 delta-spark==3.1.0          # Delta Lake integration
 kafka-python==2.0.2         # Kafka producer/consumer
-redis==5.0.0                # Redis client
-pandas==2.1.0               # Data manipulation
-numpy==1.24.0               # Numerical computing
-pytest==7.4.0               # Unit testing
+redis==5.0.1                # Redis client for enforcement
+pandas==2.1.4               # Data manipulation
+numpy==1.26.2               # Numerical computing (anomaly detection)
+faker==22.0.0               # Synthetic data generation
+prometheus-client==0.19.0   # Metrics export
+pytest==7.4.3               # Unit testing
+pytest-spark==0.6.0         # Spark testing utilities
+black==23.12.1              # Code formatting
+mypy==1.8.0                 # Type checking
+ruff==0.1.9                 # Linting
 ```
 
 ---
@@ -448,6 +508,37 @@ spark-submit streaming/init_delta_tables.py \
 
 ### Running the Pipeline
 
+#### 0. Generate Realistic Sample Data
+
+```bash
+# Generate 100,000 events as JSON (simulates 24 hours of multi-tenant SaaS traffic)
+python streaming/sample_data_generator.py \
+  --count 100000 \
+  --output-dir ./sample_data \
+  --format json \
+  --duration-hours 24
+
+# Generate and send directly to Kafka
+python streaming/sample_data_generator.py \
+  --count 50000 \
+  --kafka-brokers localhost:9092 \
+  --kafka-topic api-usage-events.v1
+
+# Generate as Parquet (for direct Spark loading without Kafka)
+python streaming/sample_data_generator.py \
+  --count 500000 \
+  --output-dir ./sample_data \
+  --format parquet
+```
+
+The generator produces realistic data including:
+- **50 tenants** across Free/Starter/Pro/Enterprise tiers
+- **Diurnal traffic patterns** (peak at business hours)
+- **~2% duplicate events** (simulating Kafka producer retries)
+- **~5% late-arriving events** (5-45 minute delays)
+- **~3% abuse traffic** (high velocity, suspicious IPs, credential sharing)
+- **Realistic HTTP status code distribution** (70% 200, 6% 400, 4% 404, 3% 429, etc.)
+
 #### 1. Start Bronze Ingestion
 
 ```bash
@@ -502,16 +593,17 @@ pytest tests/data_quality/ -v
 ```
 subscription-tracker/
 ├── schemas/
-│   ├── api_usage_event.schema.json       # Event schema definition
+│   ├── api_usage_event.schema.json       # Event schema definition (80+ fields, 19 groups)
 │   ├── API_USAGE_EVENT_DOCS.md          # Field documentation
 │   └── kafka_topic_config.md            # Kafka configuration
 │
 ├── streaming/
-│   ├── bronze_ingestion.py              # Kafka → Bronze Delta
-│   ├── silver_processing.py             # Bronze → Silver (dedup, validate)
-│   ├── gold_aggregation.py              # Silver → Gold (aggregate)
-│   ├── data_quality_checks.py           # Quality validation framework
-│   ├── observability.py                 # Monitoring & alerting
+│   ├── bronze_ingestion.py              # Kafka → Bronze Delta (raw ingestion + DLQ)
+│   ├── silver_processing.py             # Bronze → Silver (dedup, validate, quarantine)
+│   ├── gold_aggregation.py              # Silver → Gold (1-min/hourly aggregation + alerts)
+│   ├── data_quality_checks.py           # Quality validation framework (schema/value/volume)
+│   ├── observability.py                 # Monitoring & alerting (lag, freshness, throughput)
+│   ├── sample_data_generator.py         # Realistic data generator (JSON/JSONL/Parquet/Kafka)
 │   ├── requirements.txt                 # Python dependencies
 │   ├── README.md                        # Pipeline documentation
 │   ├── WHY_BRONZE_LAYER.md              # Architecture decisions

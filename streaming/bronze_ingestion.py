@@ -565,6 +565,8 @@ def write_invalid_to_dlq(
             col("_ingested_at"),
             lit("parse_failure").alias("_error_type"),
         )
+        # Add partition column before writing (partitionBy requires column name, not expression)
+        .withColumn("_dlq_date", to_date(col("_ingested_at")))
     )
     
     query = (
@@ -572,7 +574,7 @@ def write_invalid_to_dlq(
         .format("delta")
         .outputMode("append")
         .option("checkpointLocation", checkpoint_path)
-        .partitionBy(to_date(col("_ingested_at")).alias("_dlq_date"))
+        .partitionBy("_dlq_date")
         .trigger(processingTime="1 minute")
         .start(dlq_path)
     )

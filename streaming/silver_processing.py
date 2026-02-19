@@ -231,12 +231,13 @@ class DataQualityValidator:
     ]
     
     # Business rule validations
+    # NOTE: These reference FLATTENED Silver column names (post-transform), not nested Bronze paths
     BUSINESS_RULES = {
-        "valid_status_code": "response.status_code BETWEEN 100 AND 599",
-        "valid_latency": "response.latency_ms >= 0 OR response.latency_ms IS NULL",
-        "valid_risk_score": "abuse_signals.risk_score BETWEEN 0 AND 100 OR abuse_signals.risk_score IS NULL",
+        "valid_status_code": "status_code BETWEEN 100 AND 599",
+        "valid_latency": "latency_ms >= 0 OR latency_ms IS NULL",
+        "valid_risk_score": "risk_score BETWEEN 0 AND 100 OR risk_score IS NULL",
         "valid_timestamp": "event_timestamp <= current_timestamp()",  # No future events
-        "valid_billing_units": "billing.billing_units >= 0 OR billing.billing_units IS NULL",
+        "valid_billing_units": "billing_units >= 0 OR billing_units IS NULL",
     }
     
     @classmethod
@@ -431,20 +432,23 @@ class Deduplicator:
         
         logger.info(f"Executing MERGE with keys: {merge_keys}")
         
-        (
+        # DESIGN CHOICE: First-write-wins
+        # If record exists, do nothing (keep original)
+        # Rationale: First event is authoritative; duplicates are discarded
+        merge_builder = (
             target_table.alias("target")
             .merge(
                 source_df.alias("source"),
                 merge_condition
             )
-            # DESIGN CHOICE: First-write-wins
-            # If record exists, do nothing (keep original)
-            # Rationale: First event is authoritative; duplicates are discarded
-            .whenMatchedUpdateAll(condition=update_condition) if update_condition else None
-            # Insert new records
-            .whenNotMatchedInsertAll()
-            .execute()
         )
+        
+        # Only add update clause if explicit condition provided
+        if update_condition:
+            merge_builder = merge_builder.whenMatchedUpdateAll(condition=update_condition)
+        
+        # Insert new records
+        merge_builder.whenNotMatchedInsertAll().execute()
     
     @staticmethod
     def batch_dedup_with_window(

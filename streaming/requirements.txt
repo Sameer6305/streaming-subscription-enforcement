@@ -1,15 +1,30 @@
+# =============================================================================
 # Spark Structured Streaming Pipeline Requirements
 # Used by: Bronze Ingestion, Silver Processing, Gold Aggregation
+# =============================================================================
 
-# Core Spark
-pyspark==3.5.0
+# ── Core Processing Engine ──────────────────────────────────────────
+pyspark==3.5.0                  # Apache Spark (Structured Streaming, Spark SQL)
+delta-spark==3.1.0              # Delta Lake (ACID transactions, time travel, schema evolution)
+py4j==0.10.9.7                  # Java-Python bridge for Spark
 
-# Delta Lake
-delta-spark==3.1.0
+# ── Kafka Integration ───────────────────────────────────────────────
+kafka-python==2.0.2             # Kafka producer/consumer for data generation & admin
 
-# Type checking support
-py4j==0.10.9.7
+# ── Caching & Enforcement ──────────────────────────────────────────
+redis==5.0.1                    # Redis client for rate limit counter sync
 
-# Optional: For local development/testing
-# kafka-python==2.0.2
-# pandas==2.1.4
+# ── Data Generation & Testing ──────────────────────────────────────
+faker==22.0.0                   # Realistic synthetic data generation
+pandas==2.1.4                   # DataFrame utilities for local testing
+numpy==1.26.2                   # Numerical computing for distributions
+
+# ── Observability & Monitoring ─────────────────────────────────────
+prometheus-client==0.19.0       # Metrics export to Prometheus/Grafana
+
+# ── Code Quality ───────────────────────────────────────────────────
+pytest==7.4.3                   # Unit & integration testing
+pytest-spark==0.6.0             # Spark testing utilities
+black==23.12.1                  # Code formatting
+mypy==1.8.0                     # Type checking
+ruff==0.1.9                     # Linting

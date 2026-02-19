@@ -577,7 +577,7 @@ def generate_enforcement_alerts(usage_df: DataFrame) -> DataFrame:
        - error_rate > 50%
        - Action: Block + Security alert
     """
-    from pyspark.sql.functions import uuid, concat, when, lit, to_json, struct
+    from pyspark.sql.functions import when, lit, to_json, struct
     
     # Generate unique alert IDs
     alerts = (

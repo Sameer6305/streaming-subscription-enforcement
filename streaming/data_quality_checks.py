@@ -89,7 +89,7 @@ class DataQualityChecker:
         "response_time_ms": (0, 300000),     # 0-5 minutes (300,000 ms)
         "request_size_bytes": (0, 100_000_000),  # 0-100 MB
         "response_size_bytes": (0, 500_000_000),  # 0-500 MB
-        "risk_score": (0.0, 1.0),            # Normalized risk score
+        "risk_score": (0.0, 100.0),          # Risk score (0-100 per JSON schema)
         "velocity_last_1min": (0, 10000),    # Max 10k req/min per key
         "velocity_last_5min": (0, 50000),    # Max 50k req/5min per key
     }
@@ -518,7 +518,8 @@ class DataQualityChecker:
             "quality_pass_rate": quality_pass_rate,
             "volume_anomaly_detected": is_anomaly,
             "volume_z_score": z_score,
-            "volume_baseline": volume_baseline,
+            # Convert all volume_baseline values to float for MapType(StringType(), DoubleType()) schema
+            "volume_baseline": {k: float(v) if isinstance(v, (int, float)) else 0.0 for k, v in volume_baseline.items()},
             "schema_errors": sum(1 for e in top_error_types if "schema" in e or "null" in e or "missing" in e),
             "value_errors": sum(1 for e in top_error_types if "invalid" in e or "range" in e or "enum" in e),
             "null_errors": sum(1 for e in top_error_types if "null" in e),
