@@ -18,6 +18,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -86,6 +87,172 @@ def load_all_data() -> dict:
     }
 
 
+def generate_demo_data() -> dict:
+    """
+    Generate rich synthetic demo data so the dashboard is always fully
+    populated on Streamlit Cloud (where no pipeline output exists).
+    Schema matches what the real pipeline produces.
+    """
+    rng = np.random.default_rng(42)
+    plans = ["free", "starter", "professional", "enterprise"]
+    plan_weights = [0.35, 0.30, 0.22, 0.13]
+    plan_limits = {"free": 1000, "starter": 10_000, "professional": 100_000, "enterprise": 1_000_000}
+    plan_price = {"free": 0.0, "starter": 0.0001, "professional": 0.00008, "enterprise": 0.00005}
+
+    # ── Tenant Usage ──────────────────────────────────────────────────────
+    n_tenants = 80
+    tenant_plans = rng.choice(plans, size=n_tenants, p=plan_weights)
+    base_reqs = {"free": 500, "starter": 5_000, "professional": 60_000, "enterprise": 450_000}
+
+    tenant_rows = []
+    for i, plan in enumerate(tenant_plans):
+        reqs = int(rng.normal(base_reqs[plan], base_reqs[plan] * 0.3))
+        reqs = max(100, reqs)
+        limit = plan_limits[plan]
+        quota_pct = min(100, reqs / limit * 100)
+        base_lat = {"free": 180, "starter": 120, "professional": 80, "enterprise": 45}[plan]
+        p50 = rng.normal(base_lat, 10)
+        p95 = p50 * rng.uniform(1.8, 2.5)
+        p99 = p95 * rng.uniform(1.2, 1.6)
+        success = rng.uniform(0.91, 0.999)
+        rl_count = int(reqs * rng.uniform(0, 0.05) if quota_pct > 70 else 0)
+        risk = rng.uniform(0, 30) if plan == "free" else rng.uniform(0, 15)
+        tenant_rows.append({
+            "tenant_id": f"tenant_{i+1:03d}",
+            "plan_tier": plan,
+            "total_requests": reqs,
+            "success_rate": round(success * 100, 2),
+            "rate_limited_count": rl_count,
+            "avg_latency_ms": round(float(p50), 1),
+            "p50_latency_ms": round(float(p50), 1),
+            "p95_latency_ms": round(float(p95), 1),
+            "p99_latency_ms": round(float(p99), 1),
+            "avg_risk_score": round(float(risk), 2),
+            "avg_quota_used_pct": round(quota_pct, 2),
+            "max_quota_used_pct": round(min(100, quota_pct * rng.uniform(1.0, 1.3)), 2),
+            "total_cost_usd": round(reqs * plan_price[plan], 6),
+            "total_billing_units": reqs,
+        })
+    tenant_df = pd.DataFrame(tenant_rows)
+
+    # ── Enforcement Alerts ────────────────────────────────────────────────
+    alert_types = ["HEALTHY", "QUOTA_WARNING", "RATE_LIMIT_BREACH", "SUSPICIOUS_ACTIVITY", "ABUSE_DETECTED"]
+    alert_weights = [0.50, 0.22, 0.15, 0.09, 0.04]
+    severity_map = {
+        "HEALTHY": "LOW",
+        "QUOTA_WARNING": "MEDIUM",
+        "RATE_LIMIT_BREACH": "HIGH",
+        "SUSPICIOUS_ACTIVITY": "HIGH",
+        "ABUSE_DETECTED": "CRITICAL",
+    }
+    action_map = {
+        "HEALTHY": "No action required",
+        "QUOTA_WARNING": "Monitor usage and consider plan upgrade",
+        "RATE_LIMIT_BREACH": "Throttle requests and notify tenant",
+        "SUSPICIOUS_ACTIVITY": "Investigate traffic pattern — possible bot",
+        "ABUSE_DETECTED": "Block tenant and trigger security review",
+    }
+    alert_types_assigned = rng.choice(alert_types, size=n_tenants, p=alert_weights)
+    alerts_rows = []
+    for i in range(n_tenants):
+        t = tenant_rows[i]
+        at = alert_types_assigned[i]
+        alerts_rows.append({
+            "tenant_id": t["tenant_id"],
+            "plan_tier": t["plan_tier"],
+            "alert_type": at,
+            "severity": severity_map[at],
+            "recommended_action": action_map[at],
+            "peak_velocity_1min": int(rng.integers(10, 800 if at == "ABUSE_DETECTED" else 200)),
+            "max_risk_score": round(float(rng.uniform(60, 100) if at == "ABUSE_DETECTED" else rng.uniform(0, 50)), 2),
+            "total_requests": t["total_requests"],
+        })
+    alerts_df = pd.DataFrame(alerts_rows)
+
+    # ── Endpoint Analytics ────────────────────────────────────────────────
+    endpoints = [
+        ("/api/v1/data", "GET"), ("/api/v1/data", "POST"),
+        ("/api/v1/users", "GET"), ("/api/v1/users", "POST"),
+        ("/api/v1/subscriptions", "GET"), ("/api/v1/subscriptions", "PUT"),
+        ("/api/v1/events", "GET"), ("/api/v1/events", "POST"),
+        ("/api/v1/analytics", "GET"), ("/api/v1/health", "GET"),
+        ("/api/v1/billing", "GET"), ("/api/v1/billing", "POST"),
+    ]
+    ep_rows = []
+    for path, method in endpoints:
+        calls = int(rng.integers(500, 35_000))
+        lat = rng.uniform(30, 200)
+        err = rng.uniform(0.005, 0.08)
+        ep_rows.append({
+            "endpoint_path": path,
+            "http_method": method,
+            "total_calls": calls,
+            "avg_latency_ms": round(lat, 1),
+            "error_rate": round(err, 4),
+            "success_count": int(calls * (1 - err)),
+            "error_count": int(calls * err),
+        })
+    endpoint_df = pd.DataFrame(ep_rows)
+
+    # ── Status Distribution ───────────────────────────────────────────────
+    status_map = {
+        (200, "success"): 0.72,
+        (201, "success"): 0.08,
+        (400, "client_error"): 0.05,
+        (401, "unauthorized"): 0.04,
+        (403, "unauthorized"): 0.02,
+        (429, "rate_limited"): 0.05,
+        (500, "server_error"): 0.02,
+        (503, "server_error"): 0.02,
+    }
+    total = 500_000
+    status_rows = [
+        {"status_code": code, "status_category": cat, "count": int(total * w)}
+        for (code, cat), w in status_map.items()
+    ]
+    status_df = pd.DataFrame(status_rows)
+
+    # ── Geo Distribution ──────────────────────────────────────────────────
+    countries = [
+        ("US", "us-east-1", 0.32), ("GB", "eu-west-1", 0.12), ("DE", "eu-central-1", 0.09),
+        ("IN", "ap-south-1", 0.11), ("JP", "ap-northeast-1", 0.07), ("BR", "sa-east-1", 0.05),
+        ("CA", "us-east-1", 0.06), ("AU", "ap-southeast-2", 0.05), ("FR", "eu-west-3", 0.04),
+        ("SG", "ap-southeast-1", 0.04), ("NL", "eu-west-1", 0.03), ("KR", "ap-northeast-2", 0.02),
+    ]
+    lat_by_region = {
+        "us-east-1": 45, "eu-west-1": 90, "eu-central-1": 85, "ap-south-1": 140,
+        "ap-northeast-1": 160, "sa-east-1": 180, "ap-southeast-2": 175,
+        "eu-west-3": 95, "ap-southeast-1": 155, "ap-northeast-2": 165,
+    }
+    geo_rows = [
+        {
+            "country_code": cc,
+            "gateway_region": region,
+            "request_count": int(total * share),
+            "avg_latency_ms": round(lat_by_region[region] * rng.uniform(0.85, 1.15), 1),
+            "unique_tenants": int(n_tenants * share * rng.uniform(0.8, 1.2)),
+        }
+        for cc, region, share in countries
+    ]
+    geo_df = pd.DataFrame(geo_rows)
+
+    # ── Pipeline Metrics ──────────────────────────────────────────────────
+    pipeline_df = pd.DataFrame([{
+        "total_events_processed": total,
+        "unique_tenants": n_tenants,
+        "active_alerts": int((alerts_df["alert_type"] != "HEALTHY").sum()),
+    }])
+
+    return {
+        "tenant_usage": tenant_df,
+        "endpoint_analytics": endpoint_df,
+        "enforcement_alerts": alerts_df,
+        "status_distribution": status_df,
+        "geo_distribution": geo_df,
+        "pipeline_metrics": pipeline_df,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Page Configuration
 # ---------------------------------------------------------------------------
@@ -145,6 +312,10 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("### Data Source")
+    if DEMO_MODE:
+        st.warning("🟡 Demo Mode\nSynthetic data (pipeline not run)")
+    else:
+        st.success("🟢 Live Data\nReading from Gold tables")
     st.info(f"📁 {DELTA_DIR}")
 
     st.markdown("### Architecture")
@@ -179,27 +350,11 @@ with st.sidebar:
 
 data = load_all_data()
 
-# Check data availability
-has_data = len(data["tenant_usage"]) > 0
+# If no pipeline data found, fall back to synthetic demo data
+DEMO_MODE = len(data["tenant_usage"]) == 0
 
-if not has_data:
-    st.markdown('<div class="main-header">🔒 Subscription Enforcement Platform</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Real-Time API Usage Monitoring & Rate Limit Enforcement</div>', unsafe_allow_html=True)
-
-    st.warning("⚠️ No data found. Run the pipeline first:")
-    st.code("""
-# Step 1: Collect live data (from Wikipedia EventStreams)
-python demo/collect_live_data.py --source wikimedia --count 5000
-
-# Step 2: Run the Bronze → Silver → Gold pipeline
-python demo/run_pipeline.py
-
-# Step 3: Launch this dashboard
-streamlit run demo/dashboard.py
-    """, language="bash")
-
-    st.info("💡 The pipeline processes real live events from public APIs through a full Medallion Architecture (Bronze → Silver → Gold) using Apache Spark and Delta Lake.")
-    st.stop()
+if DEMO_MODE:
+    data = generate_demo_data()
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +363,13 @@ streamlit run demo/dashboard.py
 
 st.markdown('<div class="main-header">🔒 Subscription Enforcement Platform</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Real-Time API Usage Monitoring & Rate Limit Enforcement — Powered by Live Data</div>', unsafe_allow_html=True)
+
+if DEMO_MODE:
+    st.info(
+        "📊 **Demo Mode** — Displaying synthetic data that mirrors real pipeline output. "
+        "To see live data, run `python demo/collect_live_data.py` then `python demo/run_pipeline.py` locally and re-deploy.",
+        icon="ℹ️",
+    )
 
 # ---------------------------------------------------------------------------
 # KPI Row

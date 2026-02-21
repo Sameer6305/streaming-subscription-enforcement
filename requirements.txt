@@ -1,0 +1,13 @@
+# Root requirements.txt — used by Streamlit Cloud for dashboard deployment
+# Intentionally excludes pyspark/delta-spark (not needed for the hosted dashboard)
+# For full local development: pip install -r demo/requirements.txt
+
+# Dashboard
+streamlit>=1.30.0
+plotly>=5.18.0
+pandas>=2.1.0
+numpy>=1.24.0
+pyarrow>=14.0.0
+
+# Live data collection (used locally, harmless to include)
+requests>=2.31.0
