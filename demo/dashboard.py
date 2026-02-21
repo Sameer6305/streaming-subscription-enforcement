@@ -23,7 +23,17 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
 from plotly.subplots import make_subplots
+
+# Use plotly_dark template globally — gives white text on transparent
+# backgrounds which works correctly with Streamlit's dark theme
+pio.templates["custom_dark"] = pio.templates["plotly_dark"]
+pio.templates["custom_dark"].layout.update(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(14,17,23,0.6)",
+)
+pio.templates.default = "custom_dark"
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -264,20 +274,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS
+# Custom CSS — theme-agnostic (works in both light and dark mode)
 st.markdown("""
 <style>
+    /* Header text: inherit from theme so it's visible in dark & light mode */
     .main-header {
         font-size: 2rem;
         font-weight: 700;
-        color: #1a1a2e;
         margin-bottom: 0.5rem;
     }
     .sub-header {
         font-size: 1rem;
-        color: #666;
+        opacity: 0.65;
         margin-bottom: 2rem;
     }
+    /* Gradient card used in custom html blocks */
     .metric-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
@@ -285,13 +296,22 @@ st.markdown("""
         color: white;
         text-align: center;
     }
+    /* Alert severity indicators */
     .alert-critical { border-left: 4px solid #dc3545; padding-left: 1rem; }
-    .alert-high { border-left: 4px solid #fd7e14; padding-left: 1rem; }
-    .alert-medium { border-left: 4px solid #ffc107; padding-left: 1rem; }
-    .stMetric {
-        background-color: #f8f9fa;
-        padding: 1rem;
+    .alert-high     { border-left: 4px solid #fd7e14; padding-left: 1rem; }
+    .alert-medium   { border-left: 4px solid #ffc107; padding-left: 1rem; }
+
+    /* Fix Streamlit metric cards — remove hardcoded light background
+       so the native theme background + text colours are used instead */
+    [data-testid="stMetric"] {
         border-radius: 8px;
+        padding: 1rem;
+        border: 1px solid rgba(128,128,128,0.2);
+    }
+    /* Ensure metric label and value use the theme's foreground colour */
+    [data-testid="stMetricLabel"] > div,
+    [data-testid="stMetricValue"] > div {
+        color: inherit !important;
     }
 </style>
 """, unsafe_allow_html=True)
