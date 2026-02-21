@@ -52,6 +52,7 @@
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Live Demo](#-live-demo--see-it-work)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Tech Stack](#tech-stack)
@@ -97,6 +98,58 @@ This platform processes **100M+ API requests daily** across 10,000+ tenants, pro
 | **Availability** | 99.9% SLA |
 | **Deduplication** | Exactly-once via watermark + MERGE |
 | **Data Quality** | >99% pass rate with auto-quarantine |
+
+---
+
+## 🚀 Live Demo — See It Work
+
+**This project runs end-to-end with REAL live data.** No Docker, no Kafka cluster, no cloud account needed — just Python.
+
+The demo collects **real events from Wikipedia** (50-100 events/second), processes them through the full Medallion pipeline, and displays results in a **Streamlit dashboard**.
+
+### One-Command Launch
+
+```bash
+# Install demo dependencies
+pip install -r demo/requirements.txt
+
+# Run everything (collect → process → dashboard)
+python demo/run_demo.py
+
+# Quick demo (1000 events, ~30 seconds)
+python demo/run_demo.py --quick
+```
+
+### Step-by-Step
+
+```bash
+# Step 1: Collect 5,000 real events from Wikimedia EventStreams
+python demo/collect_live_data.py --source wikimedia --count 5000
+
+# Step 2: Run Bronze → Silver → Gold pipeline
+python demo/run_pipeline.py
+
+# Step 3: Launch the visual dashboard
+streamlit run demo/dashboard.py
+```
+
+### What the Dashboard Shows
+
+| Tab | What You See |
+|-----|-------------|
+| **Overview** | KPIs, plan tier distribution, status code breakdown, top tenants, latency percentiles, revenue |
+| **Tenant Analytics** | Per-tenant deep dive with quota gauge, risk scores, latency, billing |
+| **Enforcement Alerts** | Abuse detection, rate limit breaches, suspicious activity, severity filtering |
+| **Geo Distribution** | World map of requests, gateway region load balancing |
+| **Pipeline Health** | Endpoint treemap, data quality checks, Delta table storage metrics |
+
+### Data Sources
+
+| Source | Events/sec | Auth | Description |
+|--------|-----------|------|-------------|
+| **Wikimedia EventStreams** | 50-100 | None | Real Wikipedia edits via SSE — mapped to API usage events |
+| **GitHub Events API** | ~6/min | None | Real GitHub activity — demonstrates API rate limiting |
+| **Sample Generator** | Configurable | None | Synthetic multi-tenant SaaS traffic with realistic patterns |
 
 ---
 
@@ -592,6 +645,13 @@ pytest tests/data_quality/ -v
 
 ```
 subscription-tracker/
+├── demo/                                  # 🚀 LIVE DEMO (run with one command!)
+│   ├── collect_live_data.py              # Collects real events from Wikimedia/GitHub APIs
+│   ├── run_pipeline.py                   # Runs Bronze → Silver → Gold locally
+│   ├── dashboard.py                      # Streamlit visual dashboard (frontend)
+│   ├── run_demo.py                       # One-command launcher for everything
+│   └── requirements.txt                  # Demo dependencies
+│
 ├── schemas/
 │   ├── api_usage_event.schema.json       # Event schema definition (80+ fields, 19 groups)
 │   ├── API_USAGE_EVENT_DOCS.md          # Field documentation
