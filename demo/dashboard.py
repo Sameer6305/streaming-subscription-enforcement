@@ -298,6 +298,19 @@ st.markdown("""
 
 
 # ---------------------------------------------------------------------------
+# Load Data (must happen before sidebar so DEMO_MODE is defined)
+# ---------------------------------------------------------------------------
+
+data = load_all_data()
+
+# If no pipeline data found, fall back to synthetic demo data
+DEMO_MODE = len(data["tenant_usage"]) == 0
+
+if DEMO_MODE:
+    data = generate_demo_data()
+
+
+# ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
@@ -342,19 +355,6 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption(f"Last refresh: {datetime.now().strftime('%H:%M:%S')}")
-
-
-# ---------------------------------------------------------------------------
-# Load Data
-# ---------------------------------------------------------------------------
-
-data = load_all_data()
-
-# If no pipeline data found, fall back to synthetic demo data
-DEMO_MODE = len(data["tenant_usage"]) == 0
-
-if DEMO_MODE:
-    data = generate_demo_data()
 
 
 # ---------------------------------------------------------------------------
